@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools >= 64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="prosit_timsTOF_2023_wrapper"
+version="0.0.1"
+description="SHORT DESC."
+readme="README.md"
+authors=[
+    {name="MatteoLacki",email="matteo.lacki@gmail.com"},
+]
+dependencies = [
+    "click",
+]
+requires-python = ">=3.6"
+
+
+[project.scripts]
+example_shell_script = "prosit_timsTOF_2023_wrapper.cli.example_shell_script:example_shell_script"
+
+[project.urls]
+homepage="https://github.com/MatteoLacki/prosit_timsTOF_2023_wrapper.git"
+repository="https://github.com/MatteoLacki/prosit_timsTOF_2023_wrapper.git"
+
+[tool.uv]
+reinstall-package = ["prosit_timsTOF_2023_wrapper"]
+
+# [tool.pytest.ini_options]
+# testpaths = ["tests"]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+prosit_timsTOF_2023_wrapper = [
+    "data/*.csv",
+    "data/*/variables/*.index",
+    "data/*/variables/*.data*",
+    "data/*/saved_model.pb",
+]
