@@ -185,7 +185,7 @@ class Prosit2023TimsTofWrapper:
         _divide_collision_energy_by: float = 100.0,
         _alphabet=ALPHABET_UNMOD,
         **kwargs,
-    ) -> typing.Iterator[npt.NDArray]:
+    ) -> typing.Iterator[npt.NDArray, int, int]:
         """Iterate over fragment intensity predictions using tensor-flow fitted Prosit timsTOF 2023 model.
 
         Arguments:
@@ -198,7 +198,7 @@ class Prosit2023TimsTofWrapper:
             _divide_collision_energy_by (float): A normalizing constant for CEs.
 
         Yields:
-            np.array: Simulated fragment intensities after post-processing.
+            tuple: np.array with Simulated fragment intensities after post-processing and max ordinal and max fragment charge needed for parsing.
         """
         import tensorflow as tf  # on purspose here, do not dare to move it on top of the module!
 
@@ -268,7 +268,7 @@ class Prosit2023TimsTofWrapper:
                 self.max_fragment_charge,
             ):
                 assert len(parsed_intensities) == fragment_intensity_cnts[j]
-                yield parsed_intensities
+                yield (parsed_intensities, max_ordinals[j], max_fragment_charges[j])
                 if pbar is not None:
                     pbar.update(1)
                 j += 1

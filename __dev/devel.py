@@ -15,15 +15,19 @@ charges = np.array([1, 2])
 
 prosit = Prosit2023TimsTofWrapper()
 with tqdm.tqdm(total=len(sequences)) as pbar:
-    fragment_intensity_lst = list(
-        prosit.iter_predict_intensities(
+    results = [
+        (
+            fragment_intensities,
+            prosit.get_fragment_intensity_annotations(max_ordinal, max_charge),
+        )
+        for fragment_intensities, max_ordinal, max_charge in prosit.iter_predict_intensities(
             sequences=sequences,
-            amino_acid_cnts=amino_acid_cnts,
+            # amino_acid_cnts=amino_acid_cnts,
             charges=charges,
             collision_energies=collision_energies,
             pbar=pbar,
         )
-    )
+    ]
 
 prosit.get_fragment_intensity_annotations(10, 2, as_ASCI=False)
 
@@ -37,7 +41,7 @@ sequences = np.array(
     ]
 )
 
-cleaned_text = re.sub(r"\[UNIMOD:\d+\]", "", text)
+cleaned_text = [re.sub(r"\[UNIMOD:\d+\]", "", sequence) for sequence in sequences]
 
 
 sequences
