@@ -12,8 +12,32 @@ authors=[
 ]
 dependencies = [
     "click",
+    "numpy",
+    "numba",
+    "numba_progress",
+    "pandas",
+    "pytest",
+    "tensorflow==2.15.*",
+    # "tensorflow-probability>=0.22.1",
+    "tqdm",
 ]
-requires-python = ">=3.6"
+requires-python = "==3.11.*"# welcome to the wonderful World of f***ing Machine Learning
+
+[project.optional-dependencies]
+plots = [
+    "ipython",
+    "matplotlib",
+    "plotnine",
+    "kilograms @ git+https://github.com/midiaIDorg/kilograms.git",
+]
+dev = [
+    "click",# better stick to arparse
+    "duckdb",# only for dev
+    "matplotlib",
+    "kilograms @ git+https://github.com/midiaIDorg/kilograms.git",
+    "plotnine",
+    "ipython",
+]
 
 
 [project.scripts]

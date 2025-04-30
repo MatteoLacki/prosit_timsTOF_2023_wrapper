@@ -12,4 +12,6 @@ upload_pypi:
 	twine upload dist/* 
 
 ve_prosit_timsTOF_2023_wrapper:
-	python3 -m venv ve_prosit_timsTOF_2023_wrapper
+	python3.11 -m venv ../ve_prosit_timsTOF_2023_wrapper
+	../ve_prosit_timsTOF_2023_wrapper/bin/pip install -e .[devel]
+	source ../ve_prosit_timsTOF_2023_wrapper/bin/activate
