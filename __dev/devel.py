@@ -24,3 +24,20 @@ with tqdm.tqdm(total=len(sequences)) as pbar:
             pbar=pbar,
         )
     )
+
+prosit.get_fragment_intensity_annotations(10, 2, as_ASCI=False)
+
+
+import re
+
+sequences = np.array(
+    [
+        "[UNIMOD:121]PEPT[UNIMOD:121]ID[UNIMOD:121]E",
+        "PEPTIDECPEPTI[UNIMOD:121]D[UNIMOD:121]E",
+    ]
+)
+
+cleaned_text = re.sub(r"\[UNIMOD:\d+\]", "", text)
+
+
+sequences

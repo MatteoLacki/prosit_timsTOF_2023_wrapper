@@ -1,6 +1,8 @@
 import functools
+import re
 import tqdm
 import typing
+
 
 from dataclasses import dataclass
 from importlib.resources import files
@@ -21,6 +23,7 @@ def get_fragment_intensity_annotations(
     max_fragment_charge: int,
     annotations: npt.NDArray,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Check Prosit2023TimsTofWrapper.get_fragment_intensity_annotations for docs."""
     types, ordinals, charges = annotations[:, :max_ordinal, :, :max_fragment_charge]
     return types.ravel(), ordinals.ravel(), charges.ravel()
 
@@ -90,6 +93,7 @@ class Prosit2023TimsTofWrapper:
     )
     min_collisional_energy_eV: float = 20.81
     max_collisional_energy_eV: float = 69.77
+    unimod_pattern: re.Pattern = re.compile("\[UNIMOD:\d+\]")
 
     def __post_init__(self):
         self.max_ordinal = self.max_precursor_sequence_length - 1
@@ -121,17 +125,27 @@ class Prosit2023TimsTofWrapper:
         return annotations
 
     def get_fragment_intensity_annotations(
-        self,
-        max_ordinal: int,
-        max_fragment_charge: int,
+        self, max_ordinal: int, max_fragment_charge: int, as_ASCI: bool = True
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+        """Provide annotations (fragment type, ordinal, and charge) for fragment intensities.
+
+        Arguments:
+            max_ordinal (int): The maximal ordinal for a fragment, defined as precursor's amino acid count minus 1.
+            max_fragment_charge (int): The maximal fragment charge of the fragment, defined as min(precursor charge, 3).
+
+        Returns:
+            tuple: numpy arrays with fragment type, ordinal, and charge, e.g. b 2 3+.
+        """
         assert max_ordinal <= self.max_ordinal
         assert max_fragment_charge <= self.max_fragment_charge
-        return get_fragment_intensity_annotations(
+        types, ordinals, charges = get_fragment_intensity_annotations(
             max_ordinal,
             max_fragment_charge,
             self.annotations,
         )
+        if as_ASCI:
+            types = np.array([chr(x) for x in types], dtype="U1")
+        return types, ordinals, charges
 
     @functools.cached_property
     def model(self):
@@ -190,7 +204,17 @@ class Prosit2023TimsTofWrapper:
 
         assert len(sequences) == len(charges)
         assert len(sequences) == len(collision_energies)
-        assert len(sequences) == len(amino_acid_cnts)
+
+        if amino_acid_cnts is None:
+            amino_acid_cnts = np.array(
+                [
+                    len(re.sub(self.unimod_pattern, "", sequence))
+                    for sequence in sequences
+                ],
+                dtype=np.uint32,
+            )
+        else:
+            assert len(sequences) == len(amino_acid_cnts)
 
         charges, collision_energies, amino_acid_cnts = (
             xx.to_numpy() if isinstance(xx, pd.Series) else xx
@@ -211,12 +235,10 @@ class Prosit2023TimsTofWrapper:
             msg = "Prosit_2023_timsTOF_predictor was trained on CEs below {self.max_collisional_energy_eV} eV. You are out of range in {cnt} cases."
             warn(msg)
 
-        # we could make an sklearn pipeline out of that...
         collision_energies_norm = np.expand_dims(
             collision_energies / _divide_collision_energy_by, 1
         )
 
-        # shitty interfaces = interfeces
         tf_ds = tf.data.Dataset.from_tensor_slices(
             (
                 dict(
