@@ -34,7 +34,8 @@ with tqdm.tqdm(total=len(sequences)) as pbar:
         )
     ]
 
-prosit.get_fragment_intensity_annotations(10, 2, as_ASCI=False)
+prosit.get_fragment_intensity_annotations(10, 2, fragment_types_as_uint8=False)
+prosit.get_fragment_intensity_annotations(10, 2, fragment_types_as_uint8=False)
 
 # OK, now make some cache of the results.
 

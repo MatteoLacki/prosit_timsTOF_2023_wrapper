@@ -71,14 +71,6 @@ def iter_fragment_intensity_predictions(
         )
 
 
-def unpack_dict(features):
-    return (
-        features["peptides_in"],
-        features["precursor_charge_in"],
-        features["collision_energy_in"],
-    )
-
-
 @dataclass
 class Prosit2023TimsTofWrapper:
     """Wrapper around prosit timsTOF 2023 model.
@@ -127,13 +119,17 @@ class Prosit2023TimsTofWrapper:
         return annotations
 
     def get_fragment_intensity_annotations(
-        self, max_ordinal: int, max_fragment_charge: int, as_ASCI: bool = True
+        self,
+        max_ordinal: int,
+        max_fragment_charge: int,
+        fragment_types_as_uint8: bool = False,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """Provide annotations (fragment type, ordinal, and charge) for fragment intensities.
 
         Arguments:
             max_ordinal (int): The maximal ordinal for a fragment, defined as precursor's amino acid count minus 1.
             max_fragment_charge (int): The maximal fragment charge of the fragment, defined as min(precursor charge, 3).
+            fragment_types_as_uint8 (bool): Do not translate fragment types into characters.
 
         Returns:
             tuple: numpy arrays with fragment type, ordinal, and charge, e.g. b 2 3+.
@@ -145,7 +141,7 @@ class Prosit2023TimsTofWrapper:
             max_fragment_charge,
             self.annotations,
         )
-        if as_ASCI:
+        if not fragment_types_as_uint8:
             types = np.array([chr(x) for x in types], dtype="U1")
         return types, ordinals, charges
 
@@ -258,7 +254,13 @@ class Prosit2023TimsTofWrapper:
 
         i = 0
         j = 0
-        for model_input in tf_ds.map(unpack_dict):
+        for model_input in tf_ds.map(
+            lambda f: (
+                f["peptides_in"],
+                f["precursor_charge_in"],
+                f["collision_energy_in"],
+            )
+        ):
             for parsed_intensities in iter_fragment_intensity_predictions(
                 self.model(list(model_input)).numpy(),  # batch_raw_intensities
                 max_ordinals[i : i + batch_size],  # batch_of_max_ordinals
