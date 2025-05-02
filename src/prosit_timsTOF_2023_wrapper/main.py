@@ -33,7 +33,7 @@ def parse_fragment_intensity_predictions(
     raw_intensities: npt.NDArray,
     max_ordinal: int,
     max_fragment_charge: int,
-    max_modelled_precursor_sequence_length: int = 30,
+    max_precursor_sequence_len: int = 30,
     global_fragment_types_cnt: int = 2,
     global_max_fragment_charge: int = 3,
 ) -> npt.NDArray:
@@ -42,9 +42,16 @@ def parse_fragment_intensity_predictions(
 
     The predictor returns values that need to be projected onto the physically interpretable space.
     That means that charge of fragments must be <= of the precursor and length of fragment <= that of precursor.
+
+    Arguments;
+        raw_intensities (np.array): Raw results from the prosit model.
+        max_ordinal (int): Maximal possible ordinal for a given ion.
+        max_fragment_charge (int): Maximal possilbe charge for a given ion.
+
+        The rest is coming from Prosit2023TimsTofWrapper.
     """
     raw_intensities = raw_intensities.reshape(
-        max_modelled_precursor_sequence_length - 1,
+        max_precursor_sequence_len - 1,
         global_fragment_types_cnt,
         global_max_fragment_charge,
     )
@@ -54,7 +61,7 @@ def parse_fragment_intensity_predictions(
 
 
 @numba.njit
-def iter_fragment_intensity_predictions(
+def iter_parse_fragment_intensity_predictions(
     batch_of_raw_intensities,
     batch_of_max_ordinals,
     batch_of_max_fragment_charges,
@@ -77,9 +84,18 @@ class Prosit2023TimsTofWrapper:
 
     This model was downloaded from ZENODO: https://zenodo.org/records/8211811
     PAPER : https://doi.org/10.1101/2023.07.17.549401
+
+    Arguments:
+        max_precursor_sequence_len (int): Maximal allowed length of the precursor modelled.
+        fragment_types (str): A string with allowed fragment types.
+        max_fragment_charge (int): Maximal fragment charge state.
+        model_path (str): Path to the serialized model.
+        min_collisional_energy_eV (float): Minimal collisional energy used while fitting the model.
+        max_collisional_energy_eV (float): Maximal collisional energy used while fitting the model.
+        ptm_pattern (str): The regex pattern used to find ptms in sequence strings.
     """
 
-    max_precursor_sequence_length: int = 30
+    max_precursor_sequence_len: int = 30
     fragment_types: str = "by"
     max_fragment_charge: int = 3
     model_path: str = files("prosit_timsTOF_2023_wrapper.data").joinpath(
@@ -87,10 +103,11 @@ class Prosit2023TimsTofWrapper:
     )
     min_collisional_energy_eV: float = 20.81
     max_collisional_energy_eV: float = 69.77
-    unimod_pattern: re.Pattern = re.compile("\[UNIMOD:\d+\]")
+    ptm_pattern: re.Pattern = re.compile("\[UNIMOD:\d+\]")
 
     def __post_init__(self):
-        self.max_ordinal = self.max_precursor_sequence_length - 1
+        self.max_ordinal = self.max_precursor_sequence_len - 1
+        self.fragment_cnt = self.fragment_cnt
 
     @functools.cached_property
     def annotations(self) -> npt.NDArray:
@@ -104,7 +121,7 @@ class Prosit2023TimsTofWrapper:
             shape=(
                 3,
                 self.max_ordinal,
-                len(self.fragment_types),
+                self.fragment_cnt,
                 self.max_fragment_charge,
             ),
         )
@@ -154,7 +171,7 @@ class Prosit2023TimsTofWrapper:
     def seq_to_index(
         self,
         seq: str,
-        _alphabet=ALPHABET_UNMOD,
+        _alphabet: dict[str, int] = ALPHABET_UNMOD,
     ) -> npt.NDArray:
         """Convert a sequence to a list of indices into the alphabet.
 
@@ -165,9 +182,9 @@ class Prosit2023TimsTofWrapper:
         Returns:
             A list of integers, each representing an index into the alphabet.
         """
-        ret_arr = np.zeros(self.max_precursor_sequence_length, dtype=np.int32)
+        ret_arr = np.zeros(self.max_precursor_sequence_len, dtype=np.int32)
         tokenized_seq = tokenize_unimod_sequence(seq)[1:-1]
-        assert len(tokenized_seq) <= self.max_precursor_sequence_length
+        assert len(tokenized_seq) <= self.max_precursor_sequence_len
         for i, s in enumerate(tokenized_seq):
             ret_arr[i] = _alphabet.get(s, 0)
         return ret_arr
@@ -180,8 +197,8 @@ class Prosit2023TimsTofWrapper:
         amino_acid_cnts: npt.NDArray | None = None,
         batch_size: int = 1_024,
         pbar: tqdm.std.tqdm | None = None,
-        _divide_collision_energy_by: float = 100.0,
-        _alphabet=ALPHABET_UNMOD,
+        _ce_normalization: float = 100.0,
+        _alphabet: dict[str, int] = ALPHABET_UNMOD,
         **kwargs,
     ) -> typing.Iterator[tuple[npt.NDArray, int, int]]:
         """Iterate over fragment intensity predictions using tensor-flow fitted Prosit timsTOF 2023 model.
@@ -193,7 +210,8 @@ class Prosit2023TimsTofWrapper:
             amino_acid_cnts (npt.NDArray): counts of amino acids per sequence. If None, will be calculated.
             batch_size (int): size of batches for ML calculations,
             pbar (tqdm.std.tqdm|None): TQDM progress bar instance.
-            _divide_collision_energy_by (float): A normalizing constant for CEs.
+            _ce_normalization (float): A normalizing constant for CEs.
+            _alphabet (dict): Definition of the alphabet and its mapping to numbers used in tokenization.
 
         Yields:
             tuple: np.array with Simulated fragment intensities after post-processing and max ordinal and max fragment charge needed for parsing.
@@ -205,10 +223,7 @@ class Prosit2023TimsTofWrapper:
 
         if amino_acid_cnts is None:
             amino_acid_cnts = np.array(
-                [
-                    len(re.sub(self.unimod_pattern, "", sequence))
-                    for sequence in sequences
-                ],
+                [len(re.sub(self.ptm_pattern, "", s)) for s in sequences],
                 dtype=np.uint32,
             )
         else:
@@ -219,6 +234,7 @@ class Prosit2023TimsTofWrapper:
             for xx in (charges, collision_energies, amino_acid_cnts)
         )
 
+        # needed to project the estimated probabilities and parse them
         max_ordinals = np.minimum(amino_acid_cnts - 1, self.max_ordinal)
         max_fragment_charges = np.minimum(charges, self.max_fragment_charge)
         fragment_intensity_cnts = max_ordinals * max_fragment_charges * 2
@@ -234,7 +250,7 @@ class Prosit2023TimsTofWrapper:
             warn(msg)
 
         collision_energies_norm = np.expand_dims(
-            collision_energies / _divide_collision_energy_by, 1
+            collision_energies / _ce_normalization, 1
         )
 
         tf_ds = tf.data.Dataset.from_tensor_slices(
@@ -261,14 +277,13 @@ class Prosit2023TimsTofWrapper:
                 f["collision_energy_in"],
             )
         ):
-            for parsed_intensities in iter_fragment_intensity_predictions(
+            next_i = i + batch_size
+            for parsed_intensities in iter_parse_fragment_intensity_predictions(
                 self.model(list(model_input)).numpy(),  # batch_raw_intensities
-                max_ordinals[i : i + batch_size],  # batch_of_max_ordinals
-                max_fragment_charges[
-                    i : i + batch_size
-                ],  # batch_of_max_fragment_charges
-                self.max_precursor_sequence_length,
-                len(self.fragment_types),
+                max_ordinals[i:next_i],  # batch_of_max_ordinals
+                max_fragment_charges[i:next_i],  # batch_of_max_fragment_charges
+                self.max_precursor_sequence_len,
+                self.fragment_cnt,
                 self.max_fragment_charge,
             ):
                 assert len(parsed_intensities) == fragment_intensity_cnts[j]
@@ -276,4 +291,4 @@ class Prosit2023TimsTofWrapper:
                 if pbar is not None:
                     pbar.update(1)
                 j += 1
-            i += batch_size
+            i = next_i
