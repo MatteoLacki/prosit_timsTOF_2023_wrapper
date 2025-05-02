@@ -3,10 +3,13 @@
 %autoreload 2
 """
 
+import numba
 import numpy as np
 import tqdm
 
 from prosit_timsTOF_2023_wrapper.main import Prosit2023TimsTofWrapper
+from prosit_timsTOF_2023_wrapper.normalizations import normalize_to_max
+from prosit_timsTOF_2023_wrapper.normalizations import normalize_to_sum
 
 sequences = np.array(["PEPTIDE", "PEPTIDECPEPTIDE"])
 amino_acid_cnts = np.array(list(map(len, sequences)))
@@ -14,10 +17,12 @@ collision_energies = np.array([30.0, 31.1])
 charges = np.array([1, 2])
 
 prosit = Prosit2023TimsTofWrapper()
+
+
 with tqdm.tqdm(total=len(sequences)) as pbar:
     results = [
         (
-            fragment_intensities,
+            normalize_to_max(fragment_intensities),
             prosit.get_fragment_intensity_annotations(max_ordinal, max_charge),
         )
         for fragment_intensities, max_ordinal, max_charge in prosit.iter_predict_intensities(
@@ -30,6 +35,8 @@ with tqdm.tqdm(total=len(sequences)) as pbar:
     ]
 
 prosit.get_fragment_intensity_annotations(10, 2, as_ASCI=False)
+
+# OK, now make some cache of the results.
 
 
 import re

@@ -38,7 +38,10 @@ def parse_fragment_intensity_predictions(
     global_max_fragment_charge: int = 3,
 ) -> npt.NDArray:
     """
-    This is very very non-obvious if we deal correctly with negative values.
+    Retrieve only meaningful values of predictions.
+
+    The predictor returns values that need to be projected onto the physically interpretable space.
+    That means that charge of fragments must be <= of the precursor and length of fragment <= that of precursor.
     """
     raw_intensities = raw_intensities.reshape(
         max_modelled_precursor_sequence_length - 1,
@@ -46,8 +49,7 @@ def parse_fragment_intensity_predictions(
         global_max_fragment_charge,
     )
     weights = raw_intensities[:max_ordinal, :, :max_fragment_charge].ravel()
-    weights[weights < 0] = 0
-    weights /= weights.max()
+    weights[weights < 0] = 0  # this is really fishy that prosit does not return probs.
     return weights
 
 
@@ -185,7 +187,7 @@ class Prosit2023TimsTofWrapper:
         _divide_collision_energy_by: float = 100.0,
         _alphabet=ALPHABET_UNMOD,
         **kwargs,
-    ) -> typing.Iterator[npt.NDArray, int, int]:
+    ) -> typing.Iterator[tuple[npt.NDArray, int, int]]:
         """Iterate over fragment intensity predictions using tensor-flow fitted Prosit timsTOF 2023 model.
 
         Arguments:
