@@ -3,9 +3,10 @@ import re
 import tqdm
 import typing
 
-
+from collections import namedtuple
 from dataclasses import dataclass
 from importlib.resources import files
+from pathlib import Path
 from warnings import warn
 
 import numba
@@ -13,6 +14,9 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from cachemir.main import MemoizedOutput
+from cachemir.main import get_index_and_stats
+from prosit_timsTOF_2023_wrapper.tf_ops import load_model
 from prosit_timsTOF_2023_wrapper.tokenization import ALPHABET_UNMOD
 from prosit_timsTOF_2023_wrapper.tokenization import tokenize_unimod_sequence
 
@@ -104,10 +108,11 @@ class Prosit2023TimsTofWrapper:
     min_collisional_energy_eV: float = 20.81
     max_collisional_energy_eV: float = 69.77
     ptm_pattern: re.Pattern = re.compile("\[UNIMOD:\d+\]")
+    cache_path: Path | None = None
 
     def __post_init__(self):
         self.max_ordinal = self.max_precursor_sequence_len - 1
-        self.fragment_cnt = self.fragment_cnt
+        self.fragment_cnt = len(self.fragment_types)
 
     @functools.cached_property
     def annotations(self) -> npt.NDArray:
@@ -162,11 +167,9 @@ class Prosit2023TimsTofWrapper:
             types = np.array([chr(x) for x in types], dtype="U1")
         return types, ordinals, charges
 
-    @functools.cached_property
+    @property
     def model(self):
-        import tensorflow as tf  # on purspose here, do not dare to move it on top of the module!
-
-        return tf.saved_model.load(self.model_path)
+        return load_model(self.model_path)
 
     def seq_to_index(
         self,
@@ -268,6 +271,10 @@ class Prosit2023TimsTofWrapper:
             )
         ).batch(batch_size)
 
+        Input = namedtuple("IN", "sequence charge collision_energy")
+        Data = namedtuple("DATA", "intensity")
+        Stats = namedtuple("STATS", "max_ordinal max_fragment_charge")
+
         i = 0
         j = 0
         for model_input in tf_ds.map(
@@ -287,8 +294,48 @@ class Prosit2023TimsTofWrapper:
                 self.max_fragment_charge,
             ):
                 assert len(parsed_intensities) == fragment_intensity_cnts[j]
-                yield (parsed_intensities, max_ordinals[j], max_fragment_charges[j])
+                yield MemoizedOutput(
+                    Input(
+                        sequences[j],
+                        charges[j],
+                        collision_energies[j],
+                    ),
+                    Stats(max_ordinals[j], max_fragment_charges[j]),
+                    pd.DataFrame(dict(intensity=parsed_intensities), copy=False),
+                )
                 if pbar is not None:
                     pbar.update(1)
                 j += 1
             i = next_i
+
+    def get_index_and_stats(
+        self,
+        sequences: pd.Series | npt.NDArray,
+        charges: pd.Series | npt.NDArray,
+        collision_energies: pd.Series | npt.NDArray,
+        cache_path: Path | str | None = None,
+        verbose: bool = True,
+        **kwargs,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        inputs_df = pd.DataFrame(
+            dict(
+                sequences=sequences,
+                charges=charges,
+                collision_energies=collision_energies,
+            ),
+            copy=False,
+        )
+        if cache_path is None:
+            assert self.cache_path is not None
+            cache_path = self.cache_path
+        cache_path = Path(cache_path)
+
+        index_and_stats, raw_data = get_index_and_stats(
+            path=cache_path,
+            inputs_df=inputs_df,
+            results_iter=self.iter_predict_intensities,
+            input_types=dict(sequences=str, charges=int, collision_energies=float),
+            stats_types=dict(max_ordinal=int, max_fragment_charge=int),
+            verbose=verbose,
+        )
+        return index_and_stats, raw_data

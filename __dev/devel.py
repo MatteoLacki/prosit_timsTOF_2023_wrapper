@@ -34,7 +34,7 @@ with tqdm.tqdm(total=len(sequences)) as pbar:
         )
     ]
 
-prosit.get_fragment_intensity_annotations(10, 2, fragment_types_as_uint8=False)
+prosit.get_fragment_intensity_annotations(10, 2, fragment_types_as_uint8=True)
 prosit.get_fragment_intensity_annotations(10, 2, fragment_types_as_uint8=False)
 
 # OK, now make some cache of the results.
@@ -53,3 +53,4 @@ cleaned_text = [re.sub(r"\[UNIMOD:\d+\]", "", sequence) for sequence in sequence
 
 
 sequences
+from prosit_timsTOF_2023_wrapper.tokenization import ALPHABET_UNMOD

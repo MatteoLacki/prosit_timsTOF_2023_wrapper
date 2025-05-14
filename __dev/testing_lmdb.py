@@ -48,3 +48,38 @@ len(serialized_data)
 with env.begin(write=False) as txn:
     index, cnt = txn.get(serialized_foo_call)
 data[index:index+cnt]
+
+
+# alternative to msgpack: native struct in python
+import struct
+
+
+fmt = '<iBf'# : little endian
+# pack data
+byte_seq = struct.pack(fmt, 42, 255, 3.14)
+
+# Unpack data
+a, b, c = struct.unpack(fmt, byte_seq)
+x = 100011
+
+key = struct.pack(fmt, 42, 255, 3.14)
+value = np.uint32(124234)
+
+with env.begin(write=True) as txn:
+    txn.put(key, value.tobytes())
+
+with env.begin() as txn:
+    retrieved_value = txn.get(key)
+    if retrieved_value:
+        retrieved_value_decoded = np.frombuffer(retrieved_value, dtype=np.uint32)[0]
+        print(retrieved_value_decoded)
+
+
+# what if the input is an array?
+arr = np.array([1.0, 2.0, 3.0, 4.0, 5.0,
+                6.0, 7.0, 8.0, 9.0, 10.0], dtype=np.float32)
+
+arr.tobytes()
+# Format string for 10 float32s
+fmt = f'<{len(arr)}f'
+byte_seq = struct.pack(fmt, *arr)
