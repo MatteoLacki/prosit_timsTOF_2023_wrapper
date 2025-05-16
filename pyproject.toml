@@ -19,8 +19,8 @@ dependencies = [
     "pytest",
     "tensorflow==2.15.*",
     "tqdm",
-    "cachemir @ git+https://github.com/MatteoLacki/cachemir.git",
-
+    "cachemir"
+    # "cachemir @ git+https://github.com/MatteoLacki/cachemir.git",
 ]
 requires-python = "==3.11.*"# welcome to the wonderful World of f***ing Machine Learning
 
@@ -39,7 +39,9 @@ dev = [
     "plotnine",
     "ipython",
     "twine",
+    "cachemir",
 ]
+
 
 
 [project.scripts]

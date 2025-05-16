@@ -140,10 +140,27 @@ class Prosit2023TimsTofWrapper:
             annotations[2, :, :, i] = i + 1  # charges
         return annotations
 
+    def get_fragment_intensity_annotations_df(
+        self,
+        max_ordinal: int | None = None,
+        max_fragment_charge: int | None = None,
+        fragment_types_as_uint8: bool = False,
+    ) -> pd.DataFrame:
+        return pd.DataFrame(
+            dict(
+                zip(
+                    ("type", "ordinal", "charge"),
+                    self.get_fragment_intensity_annotations(
+                        max_ordinal, max_fragment_charge, fragment_types_as_uint8
+                    ),
+                )
+            )
+        )
+
     def get_fragment_intensity_annotations(
         self,
-        max_ordinal: int,
-        max_fragment_charge: int,
+        max_ordinal: int | None = None,
+        max_fragment_charge: int | None = None,
         fragment_types_as_uint8: bool = False,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """Provide annotations (fragment type, ordinal, and charge) for fragment intensities.
@@ -156,6 +173,10 @@ class Prosit2023TimsTofWrapper:
         Returns:
             tuple: numpy arrays with fragment type, ordinal, and charge, e.g. b 2 3+.
         """
+        if max_ordinal is None:
+            max_ordinal = self.max_ordinal
+        if max_fragment_charge is None:
+            max_fragment_charge = self.max_fragment_charge
         assert max_ordinal <= self.max_ordinal
         assert max_fragment_charge <= self.max_fragment_charge
         types, ordinals, charges = get_fragment_intensity_annotations(
@@ -286,12 +307,15 @@ class Prosit2023TimsTofWrapper:
         ):
             next_i = i + batch_size
             for parsed_intensities in iter_parse_fragment_intensity_predictions(
+                #
+                # DO NOT CHANGE TO KEY=VALUE FOR NUMBA WILL GO CWAZY !!!
+                #
                 self.model(list(model_input)).numpy(),  # batch_raw_intensities
                 max_ordinals[i:next_i],  # batch_of_max_ordinals
                 max_fragment_charges[i:next_i],  # batch_of_max_fragment_charges
-                self.max_precursor_sequence_len,
-                self.fragment_cnt,
-                self.max_fragment_charge,
+                self.max_precursor_sequence_len,  # max_precursor_sequence_len
+                self.fragment_cnt,  # global_fragment_types_cnt
+                self.max_fragment_charge,  # global_max_fragment_charge
             ):
                 assert len(parsed_intensities) == fragment_intensity_cnts[j]
                 yield MemoizedOutput(
